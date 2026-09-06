@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from pynchy.turn_outcomes import TurnOutcome
-from tests.group_queue_support import _target
+from tests.group_queue_support import _target, start_queued
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.api import GroupQueue
@@ -41,12 +41,12 @@ async def test_runtime_policy_pause_waits_for_boundary_and_preserves_queued_work
         return TurnOutcome.COMPLETED
 
     queue.set_process_messages_fn(process_messages)
-    queue.enqueue_message_check(affected)
+    await start_queued(queue.run_message_turn(affected))
     await first_started.wait()
 
     pause = asyncio.create_task(queue.pause_runtime_policy((affected,)))
-    queue.enqueue_message_check(affected)
-    queue.enqueue_message_check(unaffected)
+    await start_queued(queue.run_message_turn(affected))
+    await start_queued(queue.run_message_turn(unaffected))
     await unaffected_finished.wait()
     assert pause.done() is False
 
@@ -80,7 +80,7 @@ async def test_cancelled_runtime_policy_pause_restores_admission(
         return TurnOutcome.COMPLETED
 
     queue.set_process_messages_fn(process_messages)
-    queue.enqueue_message_check(target)
+    await start_queued(queue.run_message_turn(target))
     await started.wait()
     pause = asyncio.create_task(queue.pause_runtime_policy((target,)))
     await asyncio.sleep(0)
@@ -88,7 +88,7 @@ async def test_cancelled_runtime_policy_pause_restores_admission(
     pause.cancel()
     with pytest.raises(asyncio.CancelledError):
         await pause
-    queue.enqueue_message_check(target)
+    await start_queued(queue.run_message_turn(target))
     release.set()
     await replacement_started.wait()
 

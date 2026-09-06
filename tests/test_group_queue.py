@@ -7,15 +7,13 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_container_runtime_operations
 
-from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.turn_outcomes import TurnOutcome
 from tests.group_queue_support import (
     _patch_settings,
-    _queue_policy,
     _runtime,
     _target,
+    start_queued,
 )
 
 pytest_plugins = ("tests.group_queue_support",)
@@ -26,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
 
     from pynchy.host.orchestrator.api import ContainerRuntimeOperations
+    from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.identifiers import RuntimeId
 
 
@@ -211,12 +210,15 @@ class TestGroupQueue:
 
         assert events == ["process-stopped", "runner-cancelled"]
 
-    def test_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
+    async def test_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
         """Temporal-run host processes must be active even outside queue dispatch."""
-        lease = queue.acquire_host_process(_target("group1@g.us", "group-one"))
+        target = _target("group1@g.us", "group-one")
+        lease = queue.acquire_host_process(target)
         assert queue.register_host_process(lease, None, "host-agent-runner")
 
         queue.defer_interrupt_until_tool_result(_runtime("group-one"))
+        queue.set_process_messages_fn(AsyncMock(return_value=TurnOutcome.COMPLETED))
+        follow_up = await start_queued(queue.run_message_turn(target))
 
         assert queue.has_active_host_process("group-one") is True
         assert queue.snapshot()["group-one"]["pending_messages"] is True
@@ -224,6 +226,7 @@ class TestGroupQueue:
         assert queue.release_host_process(lease) is True
 
         assert queue.has_active_host_process("group-one") is False
+        assert await follow_up is TurnOutcome.COMPLETED
         assert queue.snapshot()["group-one"]["active"] is False
 
     def test_stale_external_process_release_preserves_a_newer_lease(
@@ -248,7 +251,7 @@ class TestGroupQueue:
             await task_complete.wait()
 
         target = _target("group1@g.us", "group-one")
-        assert queue.enqueue_task(target, "task-1", task_fn)
+        await start_queued(queue.run_serialized_task(target, "task-1", task_fn))
         await asyncio.sleep(0.02)
         assert queue.is_active_task(_runtime("group-one")) is True
 
@@ -297,11 +300,18 @@ class TestGroupQueue:
             queue.run_message_turn(_target("group1@g.us", "group1"))
         )
         await started.wait()
+        pending = await start_queued(queue.run_message_turn(_target("group1@g.us", "group1")))
+        autonomous = AsyncMock()
+        task = await start_queued(
+            queue.run_serialized_task(_target("group1@g.us", "group1"), "pending", autonomous)
+        )
 
         await queue.shutdown()
 
-        with pytest.raises(asyncio.CancelledError):
-            await waiting_owner
+        for owner in (waiting_owner, pending, task):
+            with pytest.raises(asyncio.CancelledError):
+                await owner
+        autonomous.assert_not_awaited()
 
         release.set()
         await asyncio.sleep(0)
@@ -320,8 +330,8 @@ class TestGroupQueue:
 
         queue.set_process_messages_fn(process_messages)
 
-        queue.enqueue_message_check(_target("group1@g.us"))
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
 
         # Let processing complete
         await asyncio.sleep(0.2)
@@ -346,9 +356,9 @@ class TestGroupQueue:
         queue.set_process_messages_fn(process_messages)
 
         # Enqueue 3 groups (limit is 2)
-        queue.enqueue_message_check(_target("group1@g.us"))
-        queue.enqueue_message_check(_target("group2@g.us"))
-        queue.enqueue_message_check(_target("group3@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
+        await start_queued(queue.run_message_turn(_target("group2@g.us")))
+        await start_queued(queue.run_message_turn(_target("group3@g.us")))
 
         await asyncio.sleep(0.05)
 
@@ -379,7 +389,7 @@ class TestGroupQueue:
         queue.set_process_messages_fn(process_messages)
 
         # Start processing messages (takes the active slot)
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.02)
 
         # While active, enqueue both a task and pending messages
@@ -387,8 +397,8 @@ class TestGroupQueue:
             execution_order.append("task")
             return asyncio.sleep(0)
 
-        queue.enqueue_task(_target("group1@g.us"), "task-1", task_fn)
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-1", task_fn))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
 
         # Release the first processing
         first_blocker.set()
@@ -399,35 +409,13 @@ class TestGroupQueue:
         assert execution_order[1] == "messages"  # pending messages drain first
         assert execution_order[2] == "task"  # then pending task
 
-    async def test_retries_with_exponential_backoff(self, queue: GroupQueue):
-        call_count = 0
-
-        def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
-            nonlocal call_count
-            call_count += 1
-            return asyncio.sleep(0, result=TurnOutcome.RETRY)  # failure
-
-        queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us", "test-group"))
-
-        # First call happens immediately
-        await asyncio.sleep(0.05)
-        assert call_count == 1
-
-        # First retry after ~5s (BASE_RETRY_SECONDS * 2^0)
-        # We use shorter sleeps in test by patching, but let's just verify
-        # the retry happened. We'll wait for the first retry.
-        with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
-            # Reset and re-test with shorter timeouts
-            pass
-
     async def test_prevents_new_enqueues_after_shutdown(self, queue: GroupQueue):
         process_messages = AsyncMock(return_value=TurnOutcome.COMPLETED)
         queue.set_process_messages_fn(process_messages)
 
         await queue.shutdown()
 
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.05)
 
         process_messages.assert_not_called()
@@ -446,12 +434,12 @@ class TestGroupQueue:
         queue.set_process_messages_fn(process_messages)
 
         # Fill both slots
-        queue.enqueue_message_check(_target("group1@g.us"))
-        queue.enqueue_message_check(_target("group2@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
+        await start_queued(queue.run_message_turn(_target("group2@g.us")))
         await asyncio.sleep(0.05)
 
         # Queue a third
-        queue.enqueue_message_check(_target("group3@g.us"))
+        await start_queued(queue.run_message_turn(_target("group3@g.us")))
         await asyncio.sleep(0.05)
 
         assert processed == ["group1@g.us", "group2@g.us"]
@@ -463,10 +451,10 @@ class TestGroupQueue:
         assert "group3@g.us" in processed
 
 
-class TestEnqueueTask:
+class TestTaskAdmission:
     """Tests for task enqueuing: deduplication, shutdown guard, and concurrency."""
 
-    async def test_duplicate_task_id_silently_dropped(self, queue: GroupQueue):
+    async def test_queued_task_id_rejects_duplicate_owner(self, queue: GroupQueue):
         """Same task_id enqueued twice should not create duplicate entries."""
         completions: list[asyncio.Event] = []
 
@@ -479,7 +467,7 @@ class TestEnqueueTask:
         queue.set_process_messages_fn(process_messages)
 
         # Start a message to occupy the group's active slot
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.02)
 
         # Enqueue the same task twice while group is active
@@ -490,8 +478,9 @@ class TestEnqueueTask:
             task_calls += 1
             return asyncio.sleep(0)
 
-        assert queue.enqueue_task(_target("group1@g.us"), "task-1", task_fn) is True
-        assert queue.enqueue_task(_target("group1@g.us"), "task-1", task_fn) is False
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-1", task_fn))
+        with pytest.raises(RuntimeError, match="rejected scheduled task"):
+            await queue.run_serialized_task(_target("group1@g.us"), "task-1", task_fn)
 
         # Release and let everything drain
         completions[0].set()
@@ -512,7 +501,7 @@ class TestEnqueueTask:
 
         queue.set_process_messages_fn(process_messages)
 
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.02)
 
         task_ids_run: list[str] = []
@@ -525,8 +514,8 @@ class TestEnqueueTask:
             task_ids_run.append("b")
             return asyncio.sleep(0)
 
-        queue.enqueue_task(_target("group1@g.us"), "task-a", task_a)
-        queue.enqueue_task(_target("group1@g.us"), "task-b", task_b)
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-a", task_a))
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-b", task_b))
 
         completions[0].set()
         await asyncio.sleep(0.15)
@@ -547,7 +536,7 @@ class TestEnqueueTask:
             task_called = True
             return asyncio.sleep(0)
 
-        queue.enqueue_task(_target("group1@g.us"), "task-1", task_fn)
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-1", task_fn))
         await asyncio.sleep(0.05)
 
         assert task_called is False
@@ -569,7 +558,7 @@ class TestSendMessage:
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us", "test-group"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us", "test-group")))
         await asyncio.sleep(0.02)
         queue.register_process(_runtime("test-group"), None, "container-1")
 
@@ -588,7 +577,9 @@ class TestSendMessage:
         async def run_task() -> None:
             await completion.wait()
 
-        queue.enqueue_task(_target("group1@g.us", "test-group"), "task-1", run_task)
+        await start_queued(
+            queue.run_serialized_task(_target("group1@g.us", "test-group"), "task-1", run_task)
+        )
         await asyncio.sleep(0.02)
 
         queue.register_process(_runtime("test-group"), None, "container-1")
@@ -600,77 +591,6 @@ class TestSendMessage:
 
         completion.set()
         await asyncio.sleep(0.05)
-
-
-class TestGroupQueueRetry:
-    """Test retry behavior with shorter timeouts."""
-
-    async def test_retries_with_backoff(self):
-        with _patch_settings(max_concurrent=2, base_retry_seconds=0.1):
-            queue = GroupQueue(
-                _queue_policy(base_retry_seconds=0.1), make_container_runtime_operations()
-            )
-            call_count = 0
-
-            def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
-                nonlocal call_count
-                call_count += 1
-                return asyncio.sleep(0, result=TurnOutcome.RETRY)
-
-            queue.set_process_messages_fn(process_messages)
-            queue.enqueue_message_check(_target("group1@g.us"))
-
-            # First call happens immediately (within next tick)
-            await asyncio.sleep(0.01)
-            assert call_count == 1
-
-            # First retry after 0.1s (BASE_RETRY_SECONDS * 2^0)
-            await asyncio.sleep(0.15)
-            assert call_count == 2
-
-            # Second retry after 0.2s (BASE_RETRY_SECONDS * 2^1)
-            await asyncio.sleep(0.25)
-            assert call_count == 3
-
-    async def test_paused_turn_is_terminal_without_retry(self):
-        with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue(
-                _queue_policy(base_retry_seconds=0.01), make_container_runtime_operations()
-            )
-            process_messages = AsyncMock(return_value=TurnOutcome.PAUSED)
-            queue.set_process_messages_fn(process_messages)
-
-            queue.enqueue_message_check(_target("group1@g.us"))
-            await asyncio.sleep(0.1)
-
-            process_messages.assert_awaited_once_with("group1@g.us")
-            assert queue.snapshot()["group1@g.us"]["active"] is False
-
-    async def test_stops_retrying_after_max_retries(self):
-        with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue(
-                _queue_policy(base_retry_seconds=0.01), make_container_runtime_operations()
-            )
-            call_count = 0
-            final_attempt = asyncio.Event()
-
-            def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
-                nonlocal call_count
-                call_count += 1
-                if call_count == 6:
-                    final_attempt.set()
-                return asyncio.sleep(0, result=TurnOutcome.RETRY)
-
-            queue.set_process_messages_fn(process_messages)
-            queue.enqueue_message_check(_target("group1@g.us"))
-
-            # Wait for all retries (5 retries + 1 initial = 6 calls total).
-            # Retry delays: 0.01, 0.02, 0.04, 0.08, 0.16 = 0.31s total
-            await asyncio.wait_for(final_attempt.wait(), timeout=1)
-            await asyncio.sleep(0)
-
-            # Should have called 6 times (initial + 5 retries) then stopped
-            assert call_count == 6
 
 
 class TestSnapshot:
@@ -692,7 +612,7 @@ class TestSnapshot:
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us", "test-group"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us", "test-group")))
         await asyncio.sleep(0.02)
 
         snap = queue.snapshot()
@@ -722,12 +642,12 @@ class TestSnapshot:
         queue.set_process_messages_fn(process_messages)
 
         # Fill both slots (max_concurrent=2)
-        queue.enqueue_message_check(_target("group1@g.us"))
-        queue.enqueue_message_check(_target("group2@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
+        await start_queued(queue.run_message_turn(_target("group2@g.us")))
         await asyncio.sleep(0.02)
 
         # Queue a third group (should go to waiting)
-        queue.enqueue_message_check(_target("group3@g.us"))
+        await start_queued(queue.run_message_turn(_target("group3@g.us")))
 
         snap = queue.snapshot()
         assert snap["_meta"]["active_count"] == 2
@@ -750,14 +670,14 @@ class TestSnapshot:
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.02)
 
         def task_fn() -> Awaitable[None]:
             return asyncio.sleep(0)
 
-        queue.enqueue_task(_target("group1@g.us"), "task-1", task_fn)
-        queue.enqueue_task(_target("group1@g.us"), "task-2", task_fn)
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-1", task_fn))
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-2", task_fn))
 
         snap = queue.snapshot()
         assert snap["group1@g.us"]["pending_tasks"] == 2
@@ -782,7 +702,7 @@ class TestCloseStdin:
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us", "test-group"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us", "test-group")))
         await asyncio.sleep(0.02)
 
         queue.register_process(_runtime("test-group"), None, "container-1")
@@ -796,7 +716,7 @@ class TestCloseStdin:
 
     async def test_noop_when_not_active(self, queue: GroupQueue, tmp_path):
         """close_stdin does nothing when group is not active."""
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+        with _patch_settings(data_dir=tmp_path):
             queue.close_stdin(_runtime("group1@g.us"))
 
         # No IPC directory should be created

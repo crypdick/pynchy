@@ -19,7 +19,14 @@ ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
 
 @workflow.defn
 class InteractiveMessageWorkflow:
-    """Run one interactive message turn through a host-side activity."""
+    """Own interactive turns, their retries, and notifications received mid-turn."""
+
+    def __init__(self) -> None:
+        self._pending = True
+
+    @workflow.signal  # noqa: V105 - Temporal invokes signals by registered name.
+    def request_turn(self) -> None:
+        self._pending = True
 
     @workflow.run
     async def run(
@@ -28,14 +35,16 @@ class InteractiveMessageWorkflow:
         maximum_attempts: int,
         initial_retry_seconds: float,
     ) -> str:
-        while True:
+        result = TurnOutcome.COMPLETED.value
+        while self._pending:
+            self._pending = False
             result = await _run_interactive_message_turn(
                 chat_jid,
                 maximum_attempts,
                 initial_retry_seconds,
             )
-            if result != TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value:
-                return result
+            self._pending |= result == TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value
+        return result
 
 
 async def _run_interactive_message_turn(

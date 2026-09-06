@@ -247,7 +247,7 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
         )
 
     try:
-        result = await run_host_input(
+        return await run_host_input(
             request.input_data,
             cwd=request.cwd,
             project_root=request.project_root,
@@ -259,14 +259,8 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
             ),
             is_interrupted=lambda: request.queue.boundary_interrupt_requested(request.target.id),
         )
-    except BaseException:
+    finally:
         request.queue.release_host_process(lease)
-        raise
-
-    has_pending_messages = request.queue.release_host_process(lease) is True
-    if result in {"success", "interrupted"} and has_pending_messages:
-        return "success_with_pending_input"
-    return result
 
 
 def _codex_home() -> Path:

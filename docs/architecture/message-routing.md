@@ -58,10 +58,16 @@ turn recovery all enter one queue keyed by the stable runtime identity. The
 queue prevents those work sources from running concurrently against the same
 workspace. Message work takes priority when the queue drains.
 
-Every completed queue operation returns an explicit turn outcome: completed,
-retry requested, continue after a safe interrupt, paused, or reset. Queue and
-Temporal adapters translate that shared outcome instead of inferring control
-flow from booleans or source-specific result types.
+Temporal owns interactive retries and follow-up checks. Incoming notifications
+signal the chat's workflow, including while an activity is running. Notifications
+received during one turn coalesce into one subsequent check. The local queue
+runs each awaited operation once and propagates its result or failure to its
+owner; it does not schedule retries or detached message runs.
+
+Each interactive operation returns an explicit turn outcome: completed, retry
+requested, continue after a safe interrupt, paused, or reset. The workflow uses
+that outcome to retry, continue, or finish. Cancelling an awaiting owner removes
+its queued work or stops its active process.
 
 ## Interrupted Turn Recovery
 

@@ -420,7 +420,7 @@ class TestInterceptSpecialCommand:
             result = await intercept_immediate_checkpoint_controls(deps, "g@g.us", group, [pending])
 
         assert result is True
-        deps.queue.enqueue_message_check.assert_called_once()
+        deps.start_interactive_turn.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_immediate_controls_return_none_when_no_command_is_handled(self):

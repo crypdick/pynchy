@@ -138,7 +138,7 @@ def test_host_environment_preserves_local_gateway_urls(tmp_path: Path) -> None:
     assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:3000/path"
 
 
-def test_host_turn_reports_pending_input_after_success(
+def test_host_turn_returns_result_and_releases_lease(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     queue = _Queue(pending=True)
@@ -147,7 +147,7 @@ def test_host_turn_reports_pending_input_after_success(
 
     result = asyncio.run(host_execution.run_host_agent_turn(_request(tmp_path, queue)))
 
-    assert result == "success_with_pending_input"
+    assert result == "success"
     assert queue.released == [queue.lease]
     runner.assert_awaited_once()
 

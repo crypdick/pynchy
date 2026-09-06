@@ -50,8 +50,7 @@ from pynchy.state.api import (
     message_cursor,
 )
 from pynchy.workspace.api import (  # beartype resolves inbound routing annotations at runtime.
-    RuntimeTarget,
-    WorkspaceProfile,
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves inbound routing annotations.
 )
 
 
@@ -209,7 +208,7 @@ async def _intercept_host_control_batch(
         )
         intercepted = False
         if active_turn is not None and has_deferred:
-            deps.queue.enqueue_message_check(RuntimeTarget.from_binding(group.folder, group_jid))
+            await deps.start_interactive_turn(group_jid)
             logger.info(
                 "route_trace",
                 step="active_deferred_control_consumed",
@@ -271,11 +270,7 @@ async def _route_pending_messages(
 
     formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in agent_pending)
     if deps.queue.send_message(runtime_id, formatted):
-        await _forward_to_active_container(
-            deps,
-            RuntimeTarget.from_binding(group.folder, group_jid),
-            agent_pending,
-        )
+        await _forward_to_active_container(deps, group_jid, agent_pending)
         return
 
     # A host runner has no IPC watcher, so send_message deliberately returns
@@ -287,10 +282,9 @@ async def _route_pending_messages(
 
 async def _forward_to_active_container(
     deps: MessageHandlerDeps,
-    target: RuntimeTarget,
+    group_jid: str,
     all_pending: list[NewMessage],
 ) -> None:
-    group_jid = target.chat_jid
     last_content = all_pending[-1].content.strip()
     logger.info("route_trace", step="piped_to_container")
     if last_content.lower().startswith("btw "):
@@ -301,7 +295,7 @@ async def _forward_to_active_container(
         await deps.broadcast_to_channels(
             group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
         )
-        deps.queue.enqueue_message_check(target)
+        await deps.start_interactive_turn(group_jid)
         return
 
     logger.debug(
@@ -339,7 +333,6 @@ async def _handle_message_during_task(
     """
     last_content = messages[-1].content.strip()
     runtime_id = RuntimeId(group.folder)
-    target = RuntimeTarget.from_binding(group.folder, group_jid)
     if last_content.lower().startswith("btw "):
         # Preserve the fast IPC handoff for persistent containers, but also
         # defer a boundary interruption for host execution and long-running
@@ -351,7 +344,7 @@ async def _handle_message_during_task(
         await deps.broadcast_to_channels(
             group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
         )
-        deps.queue.enqueue_message_check(target)
+        await deps.start_interactive_turn(group_jid)
     elif last_content.lower().startswith("todo "):
         # Non-interrupting — host writes the workspace's canonical todo board,
         # then notifies the active agent via IPC.
@@ -385,14 +378,14 @@ async def _handle_message_during_task(
             )
         # Same as "btw ": don't advance cursor, mark pending so drain
         # reprocesses.
-        deps.queue.enqueue_message_check(target)
+        await deps.start_interactive_turn(group_jid)
     else:
         # Queue regular messages until the active agent has completed its
         # current tool. Killing immediately can lose a half-finished tool and
         # makes host-mode agents unresponsive because they have no IPC loop.
         deps.queue.clear_pending_tasks(runtime_id)
         deps.queue.defer_interrupt_until_tool_result(runtime_id)
-        deps.queue.enqueue_message_check(target)
+        await deps.start_interactive_turn(group_jid)
 
 
 async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:

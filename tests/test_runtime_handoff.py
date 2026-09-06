@@ -21,7 +21,7 @@ from pynchy.agent_protocol.api import (
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator import host_runner
 from pynchy.host.orchestrator.agent_runner import PreContainerResult, run_agent
-from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
@@ -147,7 +147,7 @@ class _RejectedHostProcess:
 async def test_terminal_boundary_rejects_late_container_process_registration() -> None:
     """A process spawned after terminal retirement cannot become active."""
     queue = GroupQueue(
-        QueuePolicy(max_concurrent=1, max_retries=1, retry_base_seconds=0.01),
+        1,
         make_container_runtime_operations(),
     )
     target = RuntimeTarget.from_binding("discord:terminal", "discord:terminal")

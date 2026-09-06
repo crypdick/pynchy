@@ -28,7 +28,9 @@ from pynchy.state.api import (
     pause_chat,
     request_in_flight_turn_control,
 )
-from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves control annotations.
+)
 
 _turn_boundary_locks: dict[str, asyncio.Lock] = {}
 
@@ -238,7 +240,7 @@ async def intercept_immediate_checkpoint_controls(
     ):
         # Drain after the stopping queue coroutine releases; forwarding here
         # can write into dead container IPC.
-        deps.queue.enqueue_message_check(RuntimeTarget.from_binding(group.folder, chat_jid))
+        await deps.start_interactive_turn(chat_jid)
     return True
 
 

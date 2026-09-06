@@ -21,16 +21,12 @@ from pynchy.workspace.api import (
 
 @dataclass(eq=False)
 class QueuedTask:
-    """One autonomous work item awaiting execution for a runtime."""
+    """One owned operation awaiting execution for a runtime."""
 
     id: str
     fn: Callable[[], Awaitable[None]]
-    cancel_waiter: Callable[[], None] | None = None
-
-    def cancel(self) -> None:
-        """Settle an external owner whose queued work will never run."""
-        if self.cancel_waiter is not None:
-            self.cancel_waiter()
+    cancel: Callable[[], None]
+    is_interactive: bool = False
 
 
 @dataclass(frozen=True)
@@ -48,27 +44,24 @@ class GroupState:
 
     target: RuntimeTarget
     active: bool = False
-    active_is_task: bool = False
-    pending_messages: bool = False
     pending_tasks: deque[QueuedTask] = field(default_factory=deque)
     active_task: QueuedTask | None = None
     process: asyncio.subprocess.Process | None = None
     container_name: str | None = None
     invocation_ts: float = 0.0
-    retry_count: int = 0
     defer_interrupt_until_tool_result: bool = False
     is_host_process: bool = False
     is_external_run: bool = False  # noqa: V107
     host_process_lease: HostProcessLease | None = None
     boundary_interrupt_requested: bool = False
-    message_waiters: list[asyncio.Future[object]] = field(default_factory=list)
 
-    def cancel_message_waiters(self) -> None:
-        """Settle callers whose interactive turn cannot finish during shutdown."""
-        waiters, self.message_waiters = self.message_waiters, []
-        for waiter in waiters:
-            if not waiter.done():
-                waiter.cancel()
+    @property
+    def active_is_task(self) -> bool:
+        return self.active_task is not None and not self.active_task.is_interactive
+
+    @property
+    def pending_messages(self) -> bool:
+        return any(task.is_interactive for task in self.pending_tasks)
 
     def register_process(
         self,
@@ -149,13 +142,11 @@ class GroupState:
             return has_pending_messages
         self.host_process_lease = None
         self.release()
-        self.pending_messages = False
         return has_pending_messages
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
         self.active = False
-        self.active_is_task = False
         self.active_task = None
         self.process = None
         self.container_name = None

@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from pynchy.turn_outcomes import TurnOutcome
-from tests.group_queue_support import _runtime, _target
+from tests.group_queue_support import _runtime, _target, start_queued
 
 pytest_plugins = ("tests.group_queue_support",)
 
@@ -19,8 +19,8 @@ async def test_paused_runtime_retains_messages_and_tasks_until_resume(queue) -> 
     await queue.pause_runtime_policy((target,))
 
     assert queue.is_runtime_policy_paused(target.id) is True
-    assert queue.enqueue_task(target, "task-1", lambda: asyncio.sleep(0)) is True
-    queue.enqueue_message_check(target)
+    await start_queued(queue.run_serialized_task(target, "task-1", lambda: asyncio.sleep(0)))
+    await start_queued(queue.run_message_turn(target))
     assert queue.snapshot()["paused"] == {
         "chat_jid": "paused@g.us",
         "folder": "paused",
@@ -59,7 +59,7 @@ async def test_has_activity_distinguishes_unknown_and_active_runtimes(queue) -> 
         await release.wait()
 
     assert queue.has_activity(_runtime("missing")) is False
-    assert queue.enqueue_task(target, "task-1", task) is True
+    await start_queued(queue.run_serialized_task(target, "task-1", task))
     await asyncio.sleep(0)
     assert queue.has_activity(target.id) is True
 
@@ -71,8 +71,7 @@ async def test_has_activity_distinguishes_unknown_and_active_runtimes(queue) -> 
 @pytest.mark.asyncio
 async def test_message_processing_without_a_callback_returns_retry(queue) -> None:
     target = _target("uncallbacked@g.us", "uncallbacked")
-    queue.enqueue_message_check(target)
-    await asyncio.sleep(0.02)
+    assert await queue.run_message_turn(target) is TurnOutcome.RETRY
 
     assert queue.snapshot()[target.folder]["active"] is False
     await queue.shutdown()

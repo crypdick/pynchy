@@ -128,7 +128,6 @@ class TestInboundReconciliation:
         ingested_msg = deps.ingest_user_message.call_args[0][0]
         assert ingested_msg.chat_jid == "group@g.us"  # remapped to canonical
         deps.start_interactive_turn.assert_awaited_once_with("group@g.us")
-        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_advances_inbound_cursor(self):

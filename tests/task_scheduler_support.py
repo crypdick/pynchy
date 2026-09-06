@@ -28,7 +28,7 @@ from conftest import (
 
 from pynchy.config.api import SchedulerConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
-from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.scheduler_deps import (
     ScheduledExecutionLifecycle,
     SchedulerRuntimeConfig,
@@ -171,7 +171,7 @@ class MockSchedulerDeps:
     def __init__(self):
         self.groups: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            10,
             make_container_runtime_operations(),
         )
         self.messages: list = []

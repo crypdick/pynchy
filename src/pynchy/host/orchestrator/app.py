@@ -240,7 +240,7 @@ from pynchy.host.orchestrator.adapters import (
 from pynchy.host.orchestrator.adapters import (
     broadcast_system_notice as send_system_notice,
 )
-from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.config_refresh import (
     ConfigRefreshRuntime,
     configure_config_refresh_runtime,
@@ -864,11 +864,7 @@ class PynchyApp(ThreadRouting):
             settings.trigger_pattern, settings.commands.model_dump()
         )
         self.queue: GroupQueue = GroupQueue(
-            QueuePolicy(
-                max_concurrent=settings.container.max_concurrent,
-                max_retries=settings.queue.max_retries,
-                retry_base_seconds=settings.queue.base_retry_seconds,
-            ),
+            settings.container.max_concurrent,
             ContainerRuntimeOperations(
                 write_message=write_ipc_message,
                 write_close_sentinel=write_ipc_close_sentinel,
@@ -1692,48 +1688,21 @@ class PynchyApp(ThreadRouting):
             repo_access_override: str | None = None,
             input_source: str = "user",
         ) -> str:
-            loop = asyncio.get_running_loop()
-            result_future: asyncio.Future[str] = loop.create_future()
-
-            async def run_queued_agent() -> None:
-                if result_future.cancelled():
-                    return
-                try:
-                    result = await self.run_agent(
-                        group,
-                        chat_jid,
-                        messages,
-                        on_output=on_output,
-                        extra_system_notices=extra_system_notices,
-                        is_scheduled_task=is_scheduled_task,
-                        repo_access_override=repo_access_override,
-                        input_source=input_source,
-                    )
-                except asyncio.CancelledError:
-                    if not result_future.done():
-                        result_future.cancel()
-                    raise
-                except Exception as exc:  # noqa: BLE001 - allow: exception-handling; propagate queued run failure.
-                    logger.exception("Queued learning run failed", err=str(exc))
-                    if not result_future.done():
-                        result_future.set_exception(exc)
-                else:
-                    if not result_future.done():
-                        result_future.set_result(result)
-
-            accepted = self.queue.enqueue_task(
+            return await self.queue.run_serialized_task(
                 RuntimeTarget.from_workspace(group),
                 f"learning-review-{uuid.uuid4().hex}",
-                run_queued_agent,
+                partial(
+                    self.run_agent,
+                    group,
+                    chat_jid,
+                    messages,
+                    on_output=on_output,
+                    extra_system_notices=extra_system_notices,
+                    is_scheduled_task=is_scheduled_task,
+                    repo_access_override=repo_access_override,
+                    input_source=input_source,
+                ),
             )
-            if accepted is False:
-                result_future.cancel()
-                raise asyncio.CancelledError
-            try:
-                return await result_future
-            except asyncio.CancelledError:
-                result_future.cancel()
-                raise
 
         return await run_host_learning_review(
             packet,

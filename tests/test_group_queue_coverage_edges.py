@@ -3,22 +3,80 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
 
-from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.identifiers import RuntimeId
 from pynchy.turn_outcomes import TurnOutcome
-from tests.group_queue_support import _runtime, _target
+from tests.group_queue_support import _runtime, _target, start_queued
 
 pytest_plugins = ("tests.group_queue_support",)
 
 
 def _limited_queue(container_runtime) -> GroupQueue:
     return GroupQueue(
-        QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0.0),
+        1,
         container_runtime,
     )
+
+
+@pytest.mark.parametrize("interactive", [False, True])
+async def test_cancellation_preserves_owner_when_process_finishes_during_stop(
+    container_runtime, interactive
+):
+    queue = _limited_queue(container_runtime)
+    target = _target("cancel@g.us", "cancel")
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def process(_jid: str) -> TurnOutcome:
+        started.set()
+        await finish.wait()
+        finished.set()
+        return TurnOutcome.COMPLETED
+
+    async def stop(_proc, _name):
+        finish.set()
+        await finished.wait()
+
+    queue.set_process_messages_fn(process)
+    container_runtime.graceful_stop.side_effect = stop
+    work = (
+        queue.run_message_turn(target)
+        if interactive
+        else queue.run_serialized_task(target, "task", lambda: process(target.chat_jid))
+    )
+    owner = asyncio.create_task(work)
+    await started.wait()
+    queue.register_process(
+        target.id, MagicMock(spec=asyncio.subprocess.Process, returncode=None), "container"
+    )
+    owner.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await owner
+        assert queue.has_activity(target.id) is False
+    finally:
+        await queue.shutdown()
+
+
+async def test_cleanup_failure_reaches_owner_and_releases_the_slot(container_runtime):
+    queue = _limited_queue(container_runtime)
+    container_runtime.clean_input_dir.side_effect = [OSError("cleanup failed"), None]
+    target = _target("cleanup@g.us", "cleanup")
+
+    with pytest.raises(OSError, match="cleanup failed"):
+        await queue.run_serialized_task(target, "first", lambda: asyncio.sleep(0, result="done"))
+
+    assert queue.snapshot()["_meta"]["active_count"] == 0
+    assert (
+        await queue.run_serialized_task(target, "second", lambda: asyncio.sleep(0, result="next"))
+        == "next"
+    )
+    await queue.shutdown()
 
 
 @pytest.mark.asyncio
@@ -36,7 +94,7 @@ async def test_shutdown_waits_for_active_queue_work_to_stop(container_runtime):
         return TurnOutcome.COMPLETED
 
     queue.set_process_messages_fn(process_messages)
-    queue.enqueue_message_check(_target("active@g.us", "active"))
+    await start_queued(queue.run_message_turn(_target("active@g.us", "active")))
     await started.wait()
 
     await queue.shutdown()
@@ -54,7 +112,7 @@ async def test_active_folders_reports_running_targets(container_runtime):
         started.set()
         await release.wait()
 
-    queue.enqueue_task(_target("active@g.us", "active"), "active", run)
+    await start_queued(queue.run_serialized_task(_target("active@g.us", "active"), "active", run))
     await started.wait()
 
     assert queue.active_folders() == {"active"}
@@ -74,11 +132,11 @@ async def test_global_limit_defers_task_until_active_runtime_finishes(container_
         first_started.set()
         await release_first.wait()
 
-    queue.enqueue_task(_target("first@g.us", "first"), "first", first)
+    await start_queued(queue.run_serialized_task(_target("first@g.us", "first"), "first", first))
     await first_started.wait()
 
     second = _target("second@g.us", "second")
-    assert queue.enqueue_task(second, "second", lambda: asyncio.sleep(0)) is True
+    await start_queued(queue.run_serialized_task(second, "second", lambda: asyncio.sleep(0)))
     assert queue.snapshot()["second"]["pending_tasks"] == 1
     assert queue.snapshot()["_meta"]["waiting_count"] == 1
 
@@ -98,14 +156,15 @@ async def test_global_waiting_queue_deduplicates_message_and_task_runtime(contai
         started.set()
         await release.wait()
 
-    queue.enqueue_task(_target("first@g.us", "first"), "first", first)
+    await start_queued(queue.run_serialized_task(_target("first@g.us", "first"), "first", first))
     await started.wait()
     second = _target("second@g.us", "second")
 
-    queue.enqueue_message_check(second)
-    queue.enqueue_message_check(second)
-    assert queue.enqueue_task(second, "second", lambda: asyncio.sleep(0)) is True
-    assert queue.enqueue_task(second, "second", lambda: asyncio.sleep(0)) is False
+    await start_queued(queue.run_message_turn(second))
+    await start_queued(queue.run_message_turn(second))
+    await start_queued(queue.run_serialized_task(second, "second", lambda: asyncio.sleep(0)))
+    with pytest.raises(RuntimeError, match="rejected scheduled task"):
+        await queue.run_serialized_task(second, "second", lambda: asyncio.sleep(0))
     assert queue.snapshot()["_meta"]["waiting_count"] == 1
 
     release.set()
@@ -127,10 +186,10 @@ async def test_global_limit_defers_message_until_active_runtime_finishes(contain
     queue.set_process_messages_fn(process_messages)
     first = _target("first@g.us", "first")
     second = _target("second@g.us", "second")
-    queue.enqueue_message_check(first)
+    await start_queued(queue.run_message_turn(first))
     await first_started.wait()
 
-    queue.enqueue_message_check(second)
+    await start_queued(queue.run_message_turn(second))
     assert queue.snapshot()["second"]["pending_messages"] is True
     assert queue.snapshot()["_meta"]["waiting_count"] == 1
 
@@ -141,7 +200,7 @@ async def test_global_limit_defers_message_until_active_runtime_finishes(contain
 
 
 @pytest.mark.asyncio
-async def test_safe_interrupt_continuation_requeues_one_message_turn(container_runtime):
+async def test_safe_interrupt_returns_control_to_its_workflow(container_runtime):
     queue = _limited_queue(container_runtime)
     calls = 0
 
@@ -156,7 +215,7 @@ async def test_safe_interrupt_continuation_requeues_one_message_turn(container_r
     await asyncio.sleep(0.05)
 
     assert result is TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
-    assert calls == 2
+    assert calls == 1
     await queue.shutdown()
 
 
@@ -169,7 +228,7 @@ async def test_message_processing_exception_releases_slot_without_retry(containe
         raise ValueError("processing failed")
 
     queue.set_process_messages_fn(process_messages)
-    with pytest.raises(RuntimeError, match="Error processing messages"):
+    with pytest.raises(ValueError, match="processing failed"):
         await queue.run_message_turn(_target("failure@g.us", "failure"))
 
     assert queue.snapshot()["failure"]["active"] is False
@@ -189,10 +248,10 @@ async def test_clearing_pending_work_handles_known_and_unknown_runtime(container
 
     target = _target("clear@g.us", "clear")
     queue.set_process_messages_fn(process_messages)
-    queue.enqueue_message_check(target)
+    await start_queued(queue.run_message_turn(target))
     await started.wait()
-    queue.enqueue_task(target, "pending", lambda: asyncio.sleep(0))
-    queue.enqueue_message_check(target)
+    await start_queued(queue.run_serialized_task(target, "pending", lambda: asyncio.sleep(0)))
+    await start_queued(queue.run_message_turn(target))
 
     queue.clear_pending_tasks(target.id)
     queue.clear_pending_messages(target.id)
@@ -250,8 +309,8 @@ async def test_task_exception_releases_slot_and_cleans_runtime_input(container_r
         raise ValueError("task failed")
 
     target = _target("task-failure@g.us", "task-failure")
-    assert queue.enqueue_task(target, "failed", failed_task) is True
-    await asyncio.sleep(0.05)
+    with pytest.raises(ValueError, match="task failed"):
+        await queue.run_serialized_task(target, "failed", failed_task)
 
     assert queue.has_activity(target.id) is False
     container_runtime.clean_input_dir.assert_called_once_with("task-failure")
@@ -270,9 +329,9 @@ async def test_cancelled_serialized_task_is_removed_after_other_pending_work(con
 
     first_target = _target("first@g.us", "first")
     second_target = _target("second@g.us", "second")
-    queue.enqueue_task(first_target, "first", first)
+    await start_queued(queue.run_serialized_task(first_target, "first", first))
     await started.wait()
-    queue.enqueue_task(second_target, "manual", lambda: asyncio.sleep(0))
+    await start_queued(queue.run_serialized_task(second_target, "manual", lambda: asyncio.sleep(0)))
 
     waiting = asyncio.create_task(
         queue.run_serialized_task(second_target, "cancelled", lambda: asyncio.sleep(0))
@@ -300,7 +359,7 @@ async def test_interrupt_after_tool_result_stops_active_runtime(container_runtim
 
     queue.set_process_messages_fn(process_messages)
     target = _target("tool-boundary@g.us", "tool-boundary")
-    queue.enqueue_message_check(target)
+    await start_queued(queue.run_message_turn(target))
     await started.wait()
     queue.defer_interrupt_until_tool_result(target.id)
 
@@ -332,8 +391,10 @@ async def test_process_control_delegates_destroy_for_unknown_runtime(container_r
 async def test_process_control_destroys_an_idle_registered_runtime(container_runtime):
     queue = _limited_queue(container_runtime)
     runtime_id = _runtime("idle-runtime")
-    queue.enqueue_task(
-        _target("idle-runtime@g.us", "idle-runtime"), "idle", lambda: asyncio.sleep(0)
+    await start_queued(
+        queue.run_serialized_task(
+            _target("idle-runtime@g.us", "idle-runtime"), "idle", lambda: asyncio.sleep(0)
+        )
     )
     await asyncio.sleep(0.05)
     assert queue.register_process(runtime_id, None, "idle-container") is True

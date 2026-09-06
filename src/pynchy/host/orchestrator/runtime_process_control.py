@@ -92,7 +92,6 @@ class RuntimeProcessControl:
         state = self._registry.get(runtime_id)
         if state is not None and state.active:
             state.defer_interrupt_until_tool_result = True
-            state.pending_messages = True
 
     def claim_deferred_interrupt(self, runtime_id: RuntimeId) -> bool:
         """Mark a requested tool-boundary interrupt ready for process control."""
