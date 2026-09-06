@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
+
 from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves runtime annotations.
     ConnectionRuntime,
 )
@@ -20,9 +22,10 @@ class ConnectionRuntimeOwner:
         return tuple(self._runtimes)
 
     async def close(self) -> None:
-        for runtime in reversed(self._runtimes):
-            await runtime.close()
-        self._runtimes.clear()
+        runtimes, self._runtimes = self._runtimes, []
+        async with AsyncExitStack() as cleanup:
+            for runtime in runtimes:
+                cleanup.push_async_callback(runtime.close)
 
     def status(self) -> dict[str, bool]:
         return {runtime.name: runtime.is_ready() for runtime in self._runtimes}

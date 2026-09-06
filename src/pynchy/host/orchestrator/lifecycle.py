@@ -1,11 +1,4 @@
-"""Application lifecycle — startup phases, signal handling, shutdown.
-
-Extracted from ``app.py`` to keep the orchestrator focused on state
-management and delegation.  Each function receives the ``PynchyApp``
-instance so it can access runtime state without being a method.
-
-Startup runs in five explicit phases (see :func:`run_app`).
-"""
+"""Application startup, publication gates, rollback, and graceful shutdown."""
 
 from __future__ import annotations
 
@@ -16,6 +9,7 @@ import threading
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves lifecycle annotations at runtime.
 )
+from contextlib import AsyncExitStack
 from pathlib import Path  # beartype resolves lifecycle annotations.
 from typing import Any
 
@@ -97,7 +91,7 @@ from pynchy.state.connection import StateRuntimeConfig
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
 
 
-def _start_shutdown_watchdog() -> object:
+def _start_shutdown_watchdog() -> threading.Timer:
     watchdog = threading.Timer(_SHUTDOWN_HARD_EXIT_SECONDS, lambda: os._exit(1))
     watchdog.daemon = True
     watchdog.start()
@@ -119,18 +113,20 @@ async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
 
 
 async def _cleanup_http_runner(app: PynchyApp) -> None:
+    # TODO: Verify shutdown responses against aiohttp's request drain and remove this delay.
     await asyncio.sleep(0.3)
     await app.cleanup_http_runner()
 
 
 async def _close_runtime_resources(app: PynchyApp) -> None:
-    await app.connection_runtime_owner.close()
-    await app.close_observers()
-    batcher = output_handler.get_trace_batcher()
-    if batcher is not None:
-        await batcher.flush_all()
-    for channel in app.channels:
-        await channel.disconnect()
+    async with AsyncExitStack() as cleanup:
+        for channel in reversed(app.channels):
+            cleanup.push_async_callback(channel.disconnect)
+        batcher = output_handler.get_trace_batcher()
+        if batcher is not None:
+            cleanup.push_async_callback(batcher.flush_all)
+        cleanup.push_async_callback(app.close_observers)
+        cleanup.push_async_callback(app.connection_runtime_owner.close)
 
 
 async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = False) -> None:
@@ -145,22 +141,16 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
     # budget: one graceful Docker stop can consume roughly 12s by itself.
     watchdog = _start_shutdown_watchdog()
 
-    try:
+    async with AsyncExitStack() as cleanup:
+        cleanup.callback(watchdog.cancel)
+        cleanup.push_async_callback(_close_runtime_resources, app)
+        cleanup.push_async_callback(app.queue.shutdown)
+        cleanup.push_async_callback(gateway_manager.stop_gateway)
+        cleanup.push_async_callback(_cleanup_http_runner, app)
+        for channel in reversed(app.channels):
+            cleanup.callback(channel.prepare_shutdown)
+        cleanup.push_async_callback(app.subsystem_tasks.stop)
         await _notify_admin_shutdown(app, sig_name)
-        await app.subsystem_tasks.stop()
-        for channel in app.channels:
-            channel.prepare_shutdown()
-        await _cleanup_http_runner(app)
-
-        try:
-            await gateway_manager.stop_gateway()
-        finally:
-            try:
-                await app.queue.shutdown()
-            finally:
-                await _close_runtime_resources(app)
-    finally:
-        watchdog.cancel()
 
     if exit_process:
         os._exit(0)
@@ -369,9 +359,11 @@ async def start_connection_runtimes(app: PynchyApp) -> None:
             attempted_runtimes.append(runtime)
             await runtime.start(context)
     except BaseException:
-        for runtime in reversed(attempted_runtimes):
-            await runtime.close()
-        app.connection_runtime_owner.set([])
+        app.connection_runtime_owner.set(attempted_runtimes)
+        try:
+            await app.connection_runtime_owner.close()
+        except Exception:  # noqa: BLE001 - cleanup must preserve the connection startup failure.
+            logger.exception("Connection runtime cleanup failed during startup rollback")
         raise
 
 
@@ -489,29 +481,13 @@ async def _prepare_state_and_subsystems(
     app: PynchyApp,
     continuation_path: Path,
 ) -> startup_handler.InterruptedTurnRecovery:
-    """Start stateful runtime owners inside the deploy rollback boundary."""
-    try:
-        await _reconcile_state(app)
-        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery(
-            app,
-            continuation_path=continuation_path,
-        )
-        await _start_runtime_owners(app, interrupted_recovery)
-    except BaseException as exc:  # rollback must also release waiters during cancellation.
-        app.startup_readiness.mark_failed(exc)
-        await app.subsystem_tasks.stop()
-        try:
-            await app.cleanup_http_runner()
-        except Exception:  # noqa: BLE001 - preserve the startup error that triggers rollback.
-            logger.exception("HTTP cleanup failed during startup rollback")
-        try:
-            await app.connection_runtime_owner.close()
-        except Exception:  # noqa: BLE001 - preserve the startup error that triggers rollback.
-            logger.exception("Connection runtime cleanup failed during startup rollback")
-        await gateway_manager.stop_gateway_after_startup_failure()
-        if isinstance(exc, Exception) and await asyncio.to_thread(continuation_path.exists):
-            await startup_handler.auto_rollback(continuation_path, exc)
-        raise
+    """Reconcile state and publish ready subsystem owners."""
+    await _reconcile_state(app)
+    interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery(
+        app,
+        continuation_path=continuation_path,
+    )
+    await _start_runtime_owners(app, interrupted_recovery)
     return interrupted_recovery
 
 
@@ -527,14 +503,6 @@ async def run_app(app: PynchyApp) -> None:
     """
     continuation_path = startup_handler.claim_deploy_continuation(get_settings().data_dir)
 
-    try:
-        await _initialize_core(app)
-    except Exception as exc:  # startup rollback boundary; any init failure should trigger rollback.
-        await gateway_manager.stop_gateway_after_startup_failure()
-        if await asyncio.to_thread(continuation_path.exists):
-            await startup_handler.auto_rollback(continuation_path, exc)
-        raise
-
     shutdown_task: asyncio.Task[Any] | None = None
 
     def make_shutdown_handler(s: signal.Signals) -> Callable[[], None]:
@@ -547,26 +515,32 @@ async def run_app(app: PynchyApp) -> None:
 
         return handler
 
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, make_shutdown_handler(sig))
-
-    try:
+    try:  # noqa: PLW0717 - every startup phase belongs to the same rollback boundary.
+        await _initialize_core(app)
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, make_shutdown_handler(sig))
         await _setup_channels(app)
-    # startup rollback boundary; any channel setup failure should trigger rollback.
-    except Exception as exc:
-        await gateway_manager.stop_gateway_after_startup_failure()
-        if await asyncio.to_thread(continuation_path.exists):
+        if not app.workspaces:
+            default_channel = resolve_default_channel(
+                app.channels, get_settings().command_center.connection
+            )
+            await startup_handler.setup_admin_group(app, default_channel)
+        interrupted_recovery = await _prepare_state_and_subsystems(app, continuation_path)
+    except BaseException as exc:  # rollback also retires owners during cancellation.
+        app.startup_readiness.mark_failed(exc)
+        try:  # noqa: PLW0717 - attempt every cleanup before propagating the startup error.
+            async with AsyncExitStack() as cleanup:
+                cleanup.push_async_callback(gateway_manager.stop_gateway_after_startup_failure)
+                cleanup.push_async_callback(_close_runtime_resources, app)
+                cleanup.push_async_callback(app.queue.shutdown)
+                cleanup.push_async_callback(app.cleanup_http_runner)
+                cleanup.push_async_callback(app.subsystem_tasks.stop)
+        except Exception:  # noqa: BLE001 - retain the startup failure after attempting every cleanup.
+            logger.exception("Startup resource cleanup failed")
+        if isinstance(exc, Exception) and await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
-
-    if not app.workspaces:
-        default_channel = resolve_default_channel(
-            app.channels, get_settings().command_center.connection
-        )
-        await startup_handler.setup_admin_group(app, default_channel)
-
-    interrupted_recovery = await _prepare_state_and_subsystems(app, continuation_path)
 
     await startup_handler.send_boot_notification(app)
     await app.catch_up_channels()
