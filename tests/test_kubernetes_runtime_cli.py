@@ -118,6 +118,38 @@ def test_writable_ipc_mount_makes_existing_subdirectories_group_writable(tmp_pat
     assert output_dir.stat().st_mode & 0o7777 == 0o2775
 
 
+def test_group_writable_session_home_does_not_require_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_home = tmp_path / "sessions" / "home" / ".claude"
+    session_home.mkdir(parents=True)
+    session_home.chmod(0o2775)
+
+    def deny_chmod(self: Path, mode: int) -> None:
+        raise PermissionError("Caller has group access but does not own the directory")
+
+    monkeypatch.setattr(type(session_home), "chmod", deny_chmod)
+    resources = build_resources(
+        [
+            "run",
+            "--name",
+            "pynchy-home",
+            "--label",
+            "com.pynchy.role=agent",
+            "-v",
+            f"{session_home}:/home/agent/.claude",
+            "pynchy-agent:latest",
+        ],
+        shared_root=tmp_path,
+        pvc_name="pynchy-data",
+        namespace="pynchy",
+    )
+
+    assert resources[0]["spec"]["containers"][0]["volumeMounts"][0]["subPath"] == (
+        "sessions/home/.claude"
+    )
+
+
 def test_agent_pod_takes_ownership_of_migrated_session_homes(tmp_path: Path) -> None:
     claude_home = tmp_path / "data" / "sessions" / "home" / ".claude"
     codex_home = tmp_path / "data" / "sessions" / "home" / ".codex"
