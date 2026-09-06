@@ -106,6 +106,36 @@ async def test_mcp_coerces_issue_list_limit_to_an_integer(
 
 
 @pytest.mark.parametrize(
+    "metadata",
+    [{"progressToken": "call-1"}, {"progressToken": 7}, {"client/trace": {"id": "call-1"}}],
+)
+async def test_mcp_accepts_protocol_metadata(monkeypatch: pytest.MonkeyPatch, metadata):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+    fake_client.list_teams = AsyncMock(return_value=[{"id": "team-1", "name": "Team"}])
+
+    with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+        response = await _call({"name": "linear_list_teams", "arguments": {}, "_meta": metadata})
+
+    assert json.loads(_error_text(response)) == [{"id": "team-1", "name": "Team"}]
+    fake_client.list_teams.assert_awaited_once_with()
+
+
+async def test_mcp_metadata_does_not_relax_tool_arguments(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+
+    response = await _call(
+        {
+            "name": "linear_list_teams",
+            "arguments": {"unexpected": True},
+            "_meta": {"progressToken": "call-1"},
+        }
+    )
+
+    assert "unexpected arguments: unexpected" in _error_text(response)
+
+
+@pytest.mark.parametrize(
     ("name", "arguments", "message"),
     [
         (

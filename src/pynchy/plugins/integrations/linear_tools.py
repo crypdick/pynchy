@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
+from mcp.types import RequestParams
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -167,6 +168,7 @@ _TOOL_NAMES = frozenset(
 
 
 class _ToolCallEnvelope(_StrictModel):
+    metadata: RequestParams.Meta | None = Field(default=None, alias="_meta")
     name: str
     arguments: object = Field(default_factory=dict)
 
