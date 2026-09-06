@@ -1,20 +1,8 @@
-"""Persistent container sessions — keep containers alive between message rounds.
+"""Persistent container sessions with owned process monitoring and stderr capture.
 
-A ContainerSession owns a running container process and its I/O readers.
-Sessions live in a module-level registry keyed by group_folder.  The session
-provides methods to send IPC messages and wait for query completion, decoupling
-container lifecycle from individual message processing.
-
-Two paths through run_agent():
-  Cold path: first message or after reset — spawn container, start readers
-  Warm path: subsequent messages — send IPC message, wait for query done
-
-Output routing:
-  Output arrives as files in the IPC output/ directory and is processed by the
-  IPC watcher (_watcher.py).  The watcher calls get_session_output_handler() to
-  look up the current callback and signal_query_done() when a query-done pulse
-  is detected.  The session reads only stderr (for log capture) and monitors
-  proc.wait() for unexpected death.
+The IPC watcher routes output files to the active query callback and signals
+completion. A CLI process can exit before its runtime container, so runtime
+probes determine when the session has actually ended.
 """
 
 from __future__ import annotations
@@ -77,26 +65,8 @@ class RuntimeMonitorPolicy:
 DEFAULT_RUNTIME_MONITOR_POLICY = RuntimeMonitorPolicy()
 
 
-async def _wait_for_runtime_poll_interval(interval_seconds: float) -> None:
-    loop = asyncio.get_running_loop()
-    waiter = loop.create_future()
-    handle = loop.call_later(interval_seconds, waiter.set_result, None)
-    try:
-        await waiter
-    finally:
-        handle.cancel()
-
-
 class ContainerSession:
-    """Owns a running container process and provides query-level interaction.
-
-    Output is routed through file-based IPC: the container writes output files,
-    the host IPC watcher processes them and calls back into the session via
-    signal_query_done() and get_session_output_handler().
-
-    The session monitors stderr (for log capture) and proc.wait() (for
-    detecting unexpected container death).
-    """
+    """Own one container's lifetime, query callbacks, and idle expiry."""
 
     def __init__(
         self,
@@ -111,16 +81,13 @@ class ContainerSession:
         self.container_name = container_name
         self.invocation_ts = invocation_ts
         self.proc: asyncio.subprocess.Process | None = None
-        self._proc_monitor_task: asyncio.Future[Any] | None = None
-        self._runtime_monitor_task: asyncio.Future[Any] | None = None
-        self._stderr_task: asyncio.Future[Any] | None = None
+        self._tasks: list[asyncio.Task[None]] = []
         self._on_output: OnOutput | None = None
         self._active_query_id: str | None = None
         self._query_done = asyncio.Event()
         self._query_progress = asyncio.Event()
         self._dead = False
         self._died_before_pulse = False
-        self._runtime_alive_after_proc_exit = False
         self._idle_handle: asyncio.TimerHandle | None = None
         self._idle_timeout = 0.0
         self._on_idle_expire: Callable[[], Coroutine[Any, Any, None]] | None = None
@@ -129,9 +96,7 @@ class ContainerSession:
 
     @property
     def is_alive(self) -> bool:
-        if self.proc is None or self._dead:
-            return False
-        return self.proc.returncode is None or self._runtime_alive_after_proc_exit
+        return self.proc is not None and not self._dead
 
     @property
     def output_handler(self) -> OnOutput | None:
@@ -143,34 +108,21 @@ class ContainerSession:
         self._idle_timeout = timeout_seconds
 
     def start(self, proc: asyncio.subprocess.Process) -> None:
-        """Attach to a spawned container process and start background monitors.
-
-        Starts:
-        - stderr reader (log capture)
-        - proc monitor (detects unexpected container death via proc.wait())
-
-        Output is handled by the IPC watcher, not by reading stdout.
-        """
-        self.proc = proc
-        self._dead = False
-        self._runtime_alive_after_proc_exit = False
+        """Attach the process and start its lifetime monitor and stderr reader."""
         if proc.stderr is None:
             raise RuntimeError(
                 _MISSING_STDERR_PIPE_ERROR.format(container_name=self.container_name)
             )
-        self._stderr_task = create_background_task(
-            self._read_stderr(proc.stderr),
-            name=f"stderr-{self.container_name}",
-        )
-        self._proc_monitor_task = create_background_task(
-            self._monitor_proc(proc),
-            name=f"proc-monitor-{self.container_name}",
-        )
-        if sys.platform == "darwin":
-            self._runtime_monitor_task = create_background_task(
-                self._monitor_runtime_while_cli_alive(proc),
-                name=f"runtime-monitor-{self.container_name}",
-            )
+        self.proc = proc
+        self._dead = False
+        self._tasks = [
+            create_background_task(
+                self._read_stderr(proc.stderr), name=f"stderr-{self.container_name}"
+            ),
+            create_background_task(
+                self._monitor_proc(proc), name=f"proc-monitor-{self.container_name}"
+            ),
+        ]
         self._reset_idle_timer()
 
     def set_output_handler(
@@ -262,36 +214,32 @@ class ContainerSession:
             )
 
     async def stop(self) -> None:
-        """Stop the container and clean up resources."""
+        """Stop the container and retire every resource even if cleanup fails."""
         self._cancel_idle_timer()
         self._dead = True
-
-        # Write close sentinel
-        with contextlib.suppress(OSError):
-            write_ipc_close_sentinel(self.group_folder)
-
-        try:
-            # Stop the container
+        async with contextlib.AsyncExitStack() as cleanup:
+            cleanup.callback(self._finalize_exit)
+            cleanup.push_async_callback(self._cancel_background_tasks)
+            cleanup.push_async_callback(docker_rm_force, self.container_name)
+            with contextlib.suppress(OSError):
+                write_ipc_close_sentinel(self.group_folder)
             if self.proc and self.proc.returncode is None:
                 await graceful_stop(self.proc, self.container_name)
 
-            # Force remove (handles cases where graceful stop didn't clean up)
-            await docker_rm_force(self.container_name)
-        finally:
-            # IPC requests can still arrive while the worker is draining.
+    async def _cancel_background_tasks(self) -> None:
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks.clear()
+
+    def _finalize_exit(self) -> None:
+        # Retain the security gate while IPC drains; always release query waiters.
+        self._cancel_idle_timer()
+        with contextlib.ExitStack() as cleanup:
+            cleanup.callback(self._query_progress.set)
+            cleanup.callback(self._query_done.set)
+            cleanup.callback(clean_secret_files, self.group_folder)
             self._destroy_security_gate()
-            clean_secret_files(self.group_folder)
-
-        # Cancel background tasks
-        for task in (self._proc_monitor_task, self._runtime_monitor_task, self._stderr_task):
-            if task and not task.done():
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
-
-        # Signal anyone waiting on query_done
-        self._query_done.set()
-        self._query_progress.set()
 
     def _reset_idle_timer(self) -> None:
         """Start or restart the idle expiry timer."""
@@ -315,6 +263,7 @@ class ContainerSession:
 
     def _on_idle_expired(self) -> None:
         """Called when the session exceeds the idle timeout."""
+        expired_handle = self._idle_handle
         logger.info(
             "Session idle timeout, destroying",
             group=self.group_folder,
@@ -322,6 +271,8 @@ class ContainerSession:
         )
 
         async def _idle_teardown() -> None:
+            if self._idle_handle is not expired_handle:
+                return
             if self._on_idle_expire is not None:
                 try:
                     await self._on_idle_expire()
@@ -330,7 +281,9 @@ class ContainerSession:
                         "Idle callback failed",
                         group=self.group_folder,
                     )
-            await destroy_session(self.group_folder)
+            # Query reuse or shutdown invalidates this timer while we await.
+            if self._idle_handle is expired_handle:
+                await destroy_session(self.group_folder)
 
         create_background_task(
             _idle_teardown(),
@@ -338,63 +291,46 @@ class ContainerSession:
         )
 
     async def _monitor_proc(self, proc: asyncio.subprocess.Process) -> None:
-        """Monitor the container process and detect unexpected death.
+        """Use one observer for CLI exit and actual runtime container death.
 
-        Waits for proc.wait() to return. Docker's ``docker run`` process is a
-        good proxy for the container lifetime, but Apple Container can let the
-        ``container run`` client exit while the VM-backed container keeps
-        running. In that case, use runtime-state polling and keep the
-        session usable for IPC until the actual container stops.
-
-        A clean exit (code 0) means the container shut down intentionally
-        (for example, reset_context) -- NOT a crash.
+        Docker's CLI normally tracks container lifetime. Apple Container can
+        leave either the CLI or the VM running after the other has stopped.
         """
+        if sys.platform == "darwin":
+            seen_running = False
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + self._runtime_monitor_policy.start_grace_seconds
+            while proc.returncode is None and not self._dead:
+                running = await self._runtime_probe(self.container_name)
+                # A probe can finish after CLI exit or shutdown; re-check ownership.
+                if proc.returncode is not None or self._dead:
+                    break
+                if running:
+                    seen_running = True
+                elif seen_running or loop.time() >= deadline:
+                    logger.warning(
+                        "Runtime container unavailable while CLI process remained alive",
+                        group=self.group_folder,
+                        container=self.container_name,
+                        started=seen_running,
+                    )
+                    await self._kill_stuck_runtime_cli(proc)
+                    return
+                await asyncio.sleep(self._runtime_monitor_policy.poll_interval_seconds)
+
         exit_code = await proc.wait()
         if self._dead:
             return
-
         if await self._runtime_probe(self.container_name):
-            self._runtime_alive_after_proc_exit = True
             logger.info(
                 "Container CLI process exited while runtime container remains running",
                 group=self.group_folder,
                 container=self.container_name,
                 exit_code=exit_code,
             )
-            await self._monitor_runtime_container(exit_code)
-            return
-
-        await self._mark_container_exited(exit_code)
-
-    async def _monitor_runtime_while_cli_alive(self, proc: asyncio.subprocess.Process) -> None:
-        """Detect Apple runtime container death even if ``container run`` hangs."""
-        seen_running = False
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._runtime_monitor_policy.start_grace_seconds
-
-        while proc.returncode is None and not self._dead:
-            running = await self._runtime_probe(self.container_name)
-            if running:
-                seen_running = True
-            elif seen_running:
-                logger.warning(
-                    "Runtime container stopped while CLI process remained alive",
-                    group=self.group_folder,
-                    container=self.container_name,
-                )
-                await self._kill_stuck_runtime_cli(proc)
-                return
-            elif loop.time() >= deadline:
-                logger.warning(
-                    "Runtime container did not start while CLI process remained alive",
-                    group=self.group_folder,
-                    container=self.container_name,
-                )
-                await self._kill_stuck_runtime_cli(proc)
-                return
-            await _wait_for_runtime_poll_interval(
-                self._runtime_monitor_policy.poll_interval_seconds
-            )
+            while await self._runtime_probe(self.container_name):  # noqa: ASYNC110 - the detached runtime only exposes polling.
+                await asyncio.sleep(self._runtime_monitor_policy.poll_interval_seconds)
+        self._mark_container_exited(exit_code)
 
     async def _kill_stuck_runtime_cli(self, proc: asyncio.subprocess.Process) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -404,46 +340,15 @@ class ContainerSession:
                 proc.wait(), timeout=self._runtime_monitor_policy.cli_kill_wait_seconds
             )
         await reap_apple_runtime_orphans(self.container_name)
-        await self._mark_container_exited(1)
+        self._mark_container_exited(1)
 
-    async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
-        """Poll runtime state after the CLI client exits before the container."""
-        while await self._runtime_probe(self.container_name):
-            await _wait_for_runtime_poll_interval(
-                self._runtime_monitor_policy.poll_interval_seconds
-            )
-        await self._mark_container_exited(cli_exit_code)
-
-    async def _mark_container_exited(self, exit_code: int) -> None:
-        """Record actual container exit and unblock any in-flight query waiter."""
+    def _mark_container_exited(self, exit_code: int) -> None:
+        """Classify exit against the query pulse before retiring session resources."""
         was_stopping = self._dead
-        self._runtime_alive_after_proc_exit = False
         self._dead = True
-        self._destroy_security_gate()
-        clean_secret_files(self.group_folder)
-
-        if was_stopping:
-            self._query_done.set()
-            self._query_progress.set()
-        elif not self._query_done.is_set():
-            if exit_code == 0:
-                logger.info(
-                    "Container exited cleanly without pulse (likely reset_context)",
-                    group=self.group_folder,
-                    container=self.container_name,
-                    exit_code=exit_code,
-                )
-            else:
-                self._died_before_pulse = True
-                logger.warning(
-                    "Container died before query-done pulse",
-                    group=self.group_folder,
-                    container=self.container_name,
-                    exit_code=exit_code,
-                )
-            self._query_done.set()
-            self._query_progress.set()
-
+        if not was_stopping and not self._query_done.is_set():
+            # A clean exit without a pulse represents intentional reset_context.
+            self._died_before_pulse = exit_code != 0
         logger.info(
             "Session proc exited",
             group=self.group_folder,
@@ -455,6 +360,7 @@ class ContainerSession:
                 docker_rm_force(self.container_name),
                 name=f"remove-exited-container-{self.container_name}",
             )
+        self._finalize_exit()
 
     def _destroy_security_gate(self) -> None:
         """Retire the gate with the worker process that owns it."""
@@ -543,7 +449,8 @@ async def create_session(  # noqa: PLR0913 - session creation needs explicit pro
     The existing session's ``stop()`` call below handles its container,
     and the caller (``_cold_start``) handles stale-name cleanup pre-spawn.
     """
-    # Destroy existing session if any
+    # TODO: Retire the old session and clean IPC before spawning; failure here
+    # leaves the caller's spawned process without a registered owner.
     old = _sessions.pop(group_folder, None)
     if old is not None:
         await old.stop()
