@@ -55,24 +55,20 @@ class GoogleSetupRuntime:
     mcp_tool_names: frozenset[str]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: GoogleSetupRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: GoogleSetupRuntime | None = None
 
 
 def configure_google_setup_runtime(runtime: GoogleSetupRuntime) -> None:
     """Set Google setup configuration before host actions run."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def google_setup_runtime() -> GoogleSetupRuntime:
     """Return the resolved Google setup runtime."""
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Google setup runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 # ---------------------------------------------------------------------------

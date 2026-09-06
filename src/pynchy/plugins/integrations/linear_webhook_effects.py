@@ -73,23 +73,19 @@ class LinearWebhookEffectsRuntime:
     start_work_item_reconciliation: Callable[[], Awaitable[None]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearWebhookEffectsRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearWebhookEffectsRuntime | None = None
 
 
 def configure_linear_webhook_effects_runtime(runtime: LinearWebhookEffectsRuntime) -> None:
     """Set durable effects used after authenticated Linear webhook admission."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearWebhookEffectsRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear webhook effects runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:

@@ -41,23 +41,19 @@ class LinearAccountRuntime:
     workspace_tool_names: Callable[[str], tuple[str, ...] | None]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearAccountRuntime | None = None
-
-
-_state = _RuntimeState()
+_state: LinearAccountRuntime | None = None
 
 
 def configure_linear_account_runtime(runtime: LinearAccountRuntime) -> None:
     """Inject the configured Linear accounts and workspace selectors."""
-    _state.runtime = runtime
+    global _state  # noqa: PLW0603 - one host process owns this configured runtime.
+    _state = runtime
 
 
 def _configured_runtime() -> LinearAccountRuntime:
-    if _state.runtime is None:
+    if _state is None:
         raise RuntimeError("Linear account runtime has not been configured")
-    return _state.runtime
+    return _state
 
 
 def configured_linear_accounts(

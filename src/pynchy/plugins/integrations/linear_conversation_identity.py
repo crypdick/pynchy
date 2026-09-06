@@ -34,23 +34,19 @@ class LinearConversationRuntime:
     resolve: Callable[[ConversationSubject, GroupFolder], Awaitable[Conversation]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearConversationRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearConversationRuntime | None = None
 
 
 def configure_linear_conversation_runtime(runtime: LinearConversationRuntime) -> None:
     """Set the durable conversation operations used by Linear routes."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearConversationRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear conversation runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 async def resolve_linear_issue_conversation(

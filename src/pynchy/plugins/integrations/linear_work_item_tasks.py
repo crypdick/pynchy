@@ -143,23 +143,19 @@ class LinearWorkItemTaskRuntime:
     get_execution_for_issue: Callable[..., Awaitable[WorkItemExecution | None]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearWorkItemTaskRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearWorkItemTaskRuntime | None = None
 
 
 def configure_linear_work_item_task_runtime(runtime: LinearWorkItemTaskRuntime) -> None:
     """Set the durable operations used for Linear task admission and recovery."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearWorkItemTaskRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear work-item task runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 async def get_conversation_control_binding(

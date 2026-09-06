@@ -66,21 +66,17 @@ class GogRuntime:
     workspace_enables_gog: Callable[[str], bool]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: GogRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: GogRuntime | None = None
 
 
 def configure_gog_runtime(runtime: GogRuntime) -> None:
     """Set Gog configuration before host actions run."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def gog_runtime() -> GogRuntime:
     """Return the resolved Gog runtime or fail before processing a request."""
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Gog runtime has not been configured")
-    return _runtime.runtime
+    return _runtime

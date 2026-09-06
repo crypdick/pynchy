@@ -88,7 +88,7 @@ def test_matrix_plugin_hook_requires_configured_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.matrix_gateway._runtime.runtime",
+        "pynchy.plugins.integrations.matrix_gateway._runtime",
         None,
     )
 

@@ -35,23 +35,19 @@ class LinearPlanningTaskRuntime:
     get_all_tasks: Callable[[], Awaitable[list[ScheduledTask]]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearPlanningTaskRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearPlanningTaskRuntime | None = None
 
 
 def configure_linear_planning_task_runtime(runtime: LinearPlanningTaskRuntime) -> None:
     """Set the durable task reads used for planning-task recovery."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearPlanningTaskRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear planning-task runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 def _canonical_task_id(issue: DecisionIssue) -> str:

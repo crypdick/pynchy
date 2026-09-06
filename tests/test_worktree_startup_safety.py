@@ -58,7 +58,7 @@ def _reconcile(
         )
     )
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -115,7 +115,7 @@ def test_hook_installation_failure_isolated_from_startup(
 def test_startup_skips_unavailable_repo_without_creating_worktrees(tmp_path: Path) -> None:
     repo_context, runtime = _repo_context(tmp_path)
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -133,7 +133,7 @@ def test_startup_skips_unavailable_repo_without_creating_worktrees(tmp_path: Pat
 def test_startup_continues_when_one_worktree_cannot_be_created(tmp_path: Path) -> None:
     repo_context, runtime = _repo_context(tmp_path)
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -162,7 +162,7 @@ def test_startup_rebase_handles_missing_branch_and_divergence_failure(tmp_path: 
     (repo_context.worktrees_dir / "missing-branch").mkdir()
     (repo_context.worktrees_dir / "unknown-divergence").mkdir()
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -193,7 +193,7 @@ def test_startup_rebase_leaves_diverged_worktree_when_rebase_conflicts(
     repo_context.worktrees_dir.mkdir(parents=True)
     (repo_context.worktrees_dir / "diverged").mkdir()
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -221,7 +221,7 @@ def test_startup_rebase_aborts_a_conflicting_rebase(tmp_path: Path) -> None:
     repo_context.worktrees_dir.mkdir(parents=True)
     (repo_context.worktrees_dir / "diverged").mkdir()
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -260,7 +260,7 @@ def test_startup_rebase_stops_when_git_directory_is_unavailable(tmp_path: Path) 
     repo_context.worktrees_dir.mkdir(parents=True)
     (repo_context.worktrees_dir / "diverged").mkdir()
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,
@@ -294,7 +294,7 @@ def test_startup_checks_the_configured_repository_token(tmp_path: Path) -> None:
     repo_context, runtime = _repo_context(tmp_path)
     runtime = _StartupRuntime(runtime.home_dir, runtime.project_root, {repo_context.slug: "token"})
     with (
-        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch("pynchy.host.git_ops.worktree._runtime", runtime),
         patch(
             "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
             return_value=repo_context,

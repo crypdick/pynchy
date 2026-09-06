@@ -86,23 +86,19 @@ class LinearWorkItemsRuntime:
     get_latest_reconcilable_transition: Callable[[str], Awaitable[Any]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearWorkItemsRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearWorkItemsRuntime | None = None
 
 
 def configure_linear_work_items_runtime(runtime: LinearWorkItemsRuntime) -> None:
     """Set durable operations used by host-facing Linear work-item actions."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearWorkItemsRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear work-items runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 _LINKED_MOVES = {

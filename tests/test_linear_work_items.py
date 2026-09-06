@@ -648,10 +648,11 @@ async def test_done_webhook_without_execution_is_ignored(lifecycle: Lifecycle) -
 
 
 async def test_done_webhook_requires_configured_completion_runtime() -> None:
-    with patch("pynchy.plugins.integrations.linear_work_item_completion._runtime") as runtime:
-        runtime.runtime = None
-        with pytest.raises(RuntimeError, match="runtime has not been configured"):
-            await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")
+    with (
+        patch("pynchy.plugins.integrations.linear_work_item_completion._runtime", None),
+        pytest.raises(RuntimeError, match="runtime has not been configured"),
+    ):
+        await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")
 
 
 async def test_done_webhook_ignores_terminal_execution(lifecycle: Lifecycle) -> None:

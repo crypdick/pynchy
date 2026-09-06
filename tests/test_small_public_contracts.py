@@ -142,9 +142,7 @@ def test_connection_runtime_loader_ignores_empty_plugin_contributions() -> None:
 
 @pytest.mark.asyncio
 async def test_linear_conversation_resolution_requires_configuration(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_conversation_identity._runtime.runtime", None
-    )
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_conversation_identity._runtime", None)
 
     with pytest.raises(RuntimeError, match="Linear conversation runtime has not been configured"):
         await resolve_linear_issue_conversation("issue-1", "workspace", "account")
@@ -172,7 +170,7 @@ async def test_github_linear_routing_requires_an_existing_control(monkeypatch) -
         resolve=AsyncMock(),
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_conversation_identity._runtime.runtime",
+        "pynchy.plugins.integrations.linear_conversation_identity._runtime",
         runtime,
     )
 
@@ -209,7 +207,7 @@ async def test_github_linear_routing_requires_an_existing_control(monkeypatch) -
 
 @pytest.mark.asyncio
 async def test_linear_work_item_binding_requires_configuration(monkeypatch) -> None:
-    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_item_tasks._runtime.runtime", None)
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_item_tasks._runtime", None)
 
     with pytest.raises(
         RuntimeError,
@@ -355,7 +353,7 @@ async def test_linear_task_recovery_refreshes_routing_ownership() -> None:
 
 
 def test_linear_self_echo_recorder_requires_configuration(monkeypatch) -> None:
-    monkeypatch.setattr("pynchy.plugins.integrations.linear_self_echoes._runtime.runtime", None)
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_self_echoes._runtime", None)
 
     with pytest.raises(RuntimeError, match="Linear self-echo runtime has not been configured"):
         linear_self_echo_recorder("account")
@@ -363,7 +361,7 @@ def test_linear_self_echo_recorder_requires_configuration(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_linear_planning_admission_requires_configuration(monkeypatch) -> None:
-    monkeypatch.setattr("pynchy.plugins.integrations.linear_planning_tasks._runtime.runtime", None)
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_planning_tasks._runtime", None)
     issue = DecisionIssue(
         id="issue-1",
         identifier="SYN-1",

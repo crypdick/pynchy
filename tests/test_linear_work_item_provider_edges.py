@@ -175,9 +175,7 @@ async def test_linear_client_context_requires_the_account_api_key() -> None:
 async def test_linear_work_item_lease_requires_configured_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_work_item_provider._runtime.runtime", None
-    )
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_item_provider._runtime", None)
 
     with pytest.raises(RuntimeError, match="runtime has not been configured"):
         await acquire_work_item_lease(_Client(_issue()), _request())

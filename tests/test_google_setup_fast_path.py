@@ -76,10 +76,11 @@ def _write_valid_credentials(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_setup_action_requires_configured_runtime() -> None:
-    with patch("pynchy.plugins.integrations.google_setup._paths._runtime") as runtime:
-        runtime.runtime = None
-        with pytest.raises(RuntimeError, match="runtime has not been configured"):
-            await _handler()({"source_group": "assigned"})
+    with (
+        patch("pynchy.plugins.integrations.google_setup._paths._runtime", None),
+        pytest.raises(RuntimeError, match="runtime has not been configured"),
+    ):
+        await _handler()({"source_group": "assigned"})
 
 
 def _successful_rest_response(request: urllib.request.Request) -> _Response:
